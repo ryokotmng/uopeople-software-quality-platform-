@@ -13,8 +13,20 @@ import (
 	"github.com/ryokotmng/software-quality-platform/internal/auth"
 	"github.com/ryokotmng/software-quality-platform/internal/config"
 	"github.com/ryokotmng/software-quality-platform/internal/orchestration"
+	"github.com/ryokotmng/software-quality-platform/internal/reporting"
 	"github.com/ryokotmng/software-quality-platform/internal/store"
 )
+
+// reportSample is a fixed set of outcomes used by GET /report so the
+// endpoint produces a predictable summary for demonstration and
+// screenshots, independent of any live test run.
+var reportSample = []reporting.Outcome{
+	{Name: "auth: register then authenticate", Passed: true},
+	{Name: "auth: reject wrong password", Passed: true},
+	{Name: "auth: reject unknown user", Passed: true},
+	{Name: "orchestration: parse counts", Passed: true},
+	{Name: "orchestration: capture failure output", Passed: false},
+}
 
 // Server wires the UI handlers to the application services.
 type Server struct {
@@ -47,8 +59,42 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /", s.handleDashboard)
 	s.mux.HandleFunc("GET /api/runs", s.handleListRuns)
+	// Core-logic endpoints exposed for demonstration.
+	s.mux.HandleFunc("POST /login", s.handleLogin)
+	s.mux.HandleFunc("GET /report", s.handleReport)
 	// Only authenticated users may trigger runs (FR-6).
 	s.mux.HandleFunc("POST /api/runs/trigger", s.requireAuth(s.handleTrigger))
+}
+
+// handleLogin verifies credentials and reports whether access is
+// granted. Success returns 200; failure returns 401 with an identical
+// message regardless of why it failed (NFR-2).
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if !s.auth.Valid(creds.Username, creds.Password) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"authenticated": false,
+			"error":         "invalid username or password",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"authenticated": true,
+		"username":      creds.Username,
+	})
+}
+
+// handleReport returns a summary (total, passed, failed, pass rate) of a
+// fixed sample of test outcomes.
+func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, reporting.GenerateReport(reportSample))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

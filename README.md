@@ -45,6 +45,18 @@ curl -u admin:changeme -X POST http://localhost:8080/api/runs/trigger
 Then open <http://localhost:8080> to see the latest status, run history,
 and failing-test logs.
 
+### Core-logic endpoints
+
+```sh
+# Authenticate — returns 200 on success, 401 on failure.
+curl -X POST http://localhost:8080/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"changeme"}'
+
+# Report — total / passed / failed / pass rate for a fixed sample.
+curl http://localhost:8080/report
+```
+
 ## Testing & CI
 
 ```sh
