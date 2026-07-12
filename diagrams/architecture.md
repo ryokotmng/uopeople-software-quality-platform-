@@ -94,7 +94,7 @@ flowchart TB
 - **CI/CD Runner (GitHub Actions)** — executes orchestrated pipelines
   on push and pull-request events.
 - **Test Framework** — the underlying framework used to run individual
-  suites (e.g. `unittest` in the current draft).
+  suites (Go's standard `testing` package via `go test -json`).
 
 ## Notes
 
