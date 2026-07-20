@@ -71,18 +71,29 @@ docker run --rm -p 8080:8080 \
   software-quality-platform
 ```
 
-## Performance benchmarks
+## Performance measurement
 
-Latency and throughput of the core endpoints are measured with Go
-benchmarks (standard library `net/http/httptest`):
+`cmd/loadtest` measures latency and throughput of a **running** instance
+over real HTTP — timing each endpoint's response and counting how many
+requests a repeated, concurrent local run can process:
 
 ```sh
-go test -bench=. -benchmem ./internal/web/
+go run ./cmd/server &
+
+go run ./cmd/loadtest -endpoint /report
+go run ./cmd/loadtest -endpoint /login -method POST \
+  -body '{"username":"admin","password":"changeme"}' -content-type application/json
 ```
 
-`BenchmarkLogin` reflects the deliberate PBKDF2 password-hashing cost;
-`BenchmarkReport` reflects in-memory summarization only. Requests per
-second ≈ 1,000,000,000 ÷ (ns/op).
+Each run reports a latency distribution (sequential requests: min /
+mean / p50 / p95 / max) and a throughput figure (concurrent requests
+over a fixed duration: completed requests, elapsed time, req/s).
+`/login`'s latency reflects the deliberate PBKDF2 password-hashing cost;
+`/report`'s reflects in-memory summarization only.
+
+For isolating server-side compute cost specifically (excluding any
+network/transport overhead), `go test -bench=. -benchmem ./internal/web/`
+runs the same handlers in-process via `net/http/httptest`.
 
 ## Testing & CI
 
