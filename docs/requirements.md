@@ -25,7 +25,7 @@ refined as design work progresses.
 | NFR-3  | Reliability     | A failure in one test suite must not prevent others from running.           |
 | NFR-4  | Maintainability | Source, tests, docs, diagrams, and reports live in separate top-level dirs. |
 | NFR-5  | Traceability    | Every change reaches `main` through a reviewed commit on a feature branch. |
-| NFR-6  | Portability     | The platform runs on any environment with Python 3.11 or later.             |
+| NFR-6  | Portability     | The platform builds and runs anywhere the Go 1.26+ toolchain is available.  |
 | NFR-7  | Usability       | Test orchestrator output is stable enough to diff between runs.             |
 
 ## Change Log

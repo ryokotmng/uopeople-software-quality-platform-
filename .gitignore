@@ -1,13 +1,17 @@
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
+# Environment / secrets
 .env
+
+# Runtime state (user store, persisted test-run results)
+/data/
+
+# Go build output
+/bin/
+*.exe
+*.test
+*.out
+
+# Editor / OS
 .DS_Store
 .idea/
 .vscode/
-node_modules/
-dist/
-build/
 *.log
