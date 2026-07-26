@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ryokotmng/software-quality-platform/internal/auth"
@@ -30,23 +31,25 @@ var reportSample = []reporting.Outcome{
 
 // Server wires the UI handlers to the application services.
 type Server struct {
-	cfg   config.Config
-	auth  *auth.Service
-	runs  *store.RunStore
-	tmpl  *template.Template
-	mux   *http.ServeMux
-	runFn func(ctx context.Context, dir string, packages ...string) (orchestration.RunResult, error)
+	cfg       config.Config
+	auth      *auth.Service
+	runs      *store.RunStore
+	tmpl      *template.Template
+	loginTmpl *template.Template
+	mux       *http.ServeMux
+	runFn     func(ctx context.Context, dir string, packages ...string) (orchestration.RunResult, error)
 }
 
 // NewServer builds a Server and registers its routes.
 func NewServer(cfg config.Config, authSvc *auth.Service, runs *store.RunStore) *Server {
 	s := &Server{
-		cfg:   cfg,
-		auth:  authSvc,
-		runs:  runs,
-		tmpl:  template.Must(template.New("dashboard").Parse(dashboardHTML)),
-		mux:   http.NewServeMux(),
-		runFn: orchestration.Run,
+		cfg:       cfg,
+		auth:      authSvc,
+		runs:      runs,
+		tmpl:      template.Must(template.New("dashboard").Parse(dashboardHTML)),
+		loginTmpl: template.Must(template.New("login").Parse(loginHTML)),
+		mux:       http.NewServeMux(),
+		runFn:     orchestration.Run,
 	}
 	s.routes()
 	return s
@@ -60,35 +63,73 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /", s.handleDashboard)
 	s.mux.HandleFunc("GET /api/runs", s.handleListRuns)
 	// Core-logic endpoints exposed for demonstration.
+	s.mux.HandleFunc("GET /login", s.handleLoginForm)
 	s.mux.HandleFunc("POST /login", s.handleLogin)
 	s.mux.HandleFunc("GET /report", s.handleReport)
 	// Only authenticated users may trigger runs (FR-6).
 	s.mux.HandleFunc("POST /api/runs/trigger", s.requireAuth(s.handleTrigger))
 }
 
-// handleLogin verifies credentials and reports whether access is
-// granted. Success returns 200; failure returns 401 with an identical
-// message regardless of why it failed (NFR-2).
+// loginView is the login page's template data model.
+type loginView struct {
+	Success  bool
+	Error    string
+	Username string
+}
+
+// handleLoginForm renders the HTML login page.
+func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
+	s.renderLogin(w, http.StatusOK, loginView{})
+}
+
+// handleLogin verifies credentials. It serves two callers: browsers that
+// submit the HTML form (returning an HTML page) and API clients that send
+// JSON (returning JSON). Success returns 200; failure returns 401 with an
+// identical message regardless of why it failed (NFR-2).
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var creds struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if !s.auth.Valid(creds.Username, creds.Password) {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{
-			"authenticated": false,
-			"error":         "invalid username or password",
+	// JSON API path (backward compatible with curl / programmatic use).
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		var creds struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if !s.auth.Valid(creds.Username, creds.Password) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"authenticated": false,
+				"error":         "invalid username or password",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"authenticated": true,
+			"username":      creds.Username,
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"authenticated": true,
-		"username":      creds.Username,
-	})
+
+	// Browser form path (application/x-www-form-urlencoded).
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	if !s.auth.Valid(username, password) {
+		s.renderLogin(w, http.StatusUnauthorized, loginView{
+			Error:    "Invalid username or password",
+			Username: username,
+		})
+		return
+	}
+	s.renderLogin(w, http.StatusOK, loginView{Success: true, Username: username})
+}
+
+func (s *Server) renderLogin(w http.ResponseWriter, status int, view loginView) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := s.loginTmpl.Execute(w, view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // handleReport returns a summary (total, passed, failed, pass rate) of a
@@ -237,5 +278,41 @@ const dashboardHTML = `<!doctype html>
       {{end}}
     </tbody>
   </table>
+</body>
+</html>`
+
+const loginHTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Software Quality Platform — Login</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 4rem auto; max-width: 22rem; color: #1a1a1a; }
+  h1 { font-size: 1.25rem; }
+  form { display: grid; gap: .6rem; margin-top: 1rem; }
+  label { font-size: .85rem; color: #555; }
+  input { padding: .45rem .6rem; border: 1px solid #ccc; border-radius: .35rem; font-size: 1rem; }
+  button { padding: .5rem; border: 0; border-radius: .35rem; background: #1a5fb4; color: #fff; font-weight: 600; cursor: pointer; }
+  .banner { padding: .5rem .75rem; border-radius: .4rem; font-weight: 600; }
+  .ok { background: #e5f6e5; color: #1a7f1a; }
+  .err { background: #fbe3e3; color: #b11; }
+  .muted { color: #777; font-size: .85rem; }
+</style>
+</head>
+<body>
+  <h1>Software Quality Platform</h1>
+  {{if .Success}}
+    <p class="banner ok">Login successful — welcome, {{.Username}}.</p>
+    <p class="muted"><a href="/">Go to the dashboard</a></p>
+  {{else}}
+    {{if .Error}}<p class="banner err">{{.Error}}</p>{{end}}
+    <form method="post" action="/login">
+      <label for="username">Username</label>
+      <input id="username" name="username" value="{{.Username}}" autocomplete="username" autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
+      <button type="submit">Log in</button>
+    </form>
+  {{end}}
 </body>
 </html>`
