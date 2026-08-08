@@ -156,6 +156,14 @@ func (s *Service) EnsureUser(username, password string) error {
 	return err
 }
 
+// Valid reports whether the credentials authenticate successfully. It is
+// a boolean convenience over Authenticate for callers (and the /login
+// handler) that only need a yes/no answer.
+func (s *Service) Valid(username, password string) bool {
+	_, err := s.Authenticate(username, password)
+	return err == nil
+}
+
 // Authenticate verifies a username/password pair. It returns
 // ErrInvalidCredentials for both unknown users and wrong passwords so
 // the two cases are indistinguishable to a caller (NFR-2).

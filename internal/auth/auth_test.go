@@ -25,6 +25,25 @@ func TestRegisterThenAuthenticateSucceeds(t *testing.T) {
 	}
 }
 
+func TestAuthenticateValid(t *testing.T) {
+	svc := newTestService(t)
+	svc.Register("alice", "correct-horse")
+	if !svc.Valid("alice", "correct-horse") {
+		t.Fatal("Valid() = false for correct credentials, want true")
+	}
+}
+
+func TestAuthenticateInvalid(t *testing.T) {
+	svc := newTestService(t)
+	svc.Register("alice", "correct-horse")
+	if svc.Valid("alice", "wrong-password") {
+		t.Error("Valid() = true for a wrong password, want false")
+	}
+	if svc.Valid("ghost", "whatever") {
+		t.Error("Valid() = true for an unknown user, want false")
+	}
+}
+
 func TestAuthenticateWrongPasswordFails(t *testing.T) {
 	svc := newTestService(t)
 	svc.Register("alice", "correct-horse")

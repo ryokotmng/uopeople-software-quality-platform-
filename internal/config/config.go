@@ -48,11 +48,21 @@ func Load() Config {
 		AppEnv:        getenv("APP_ENV", "development"),
 		DataDir:       getenv("DATA_DIR", "data"),
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
-		Addr:          getenv("ADDR", ":8080"),
+		Addr:          listenAddr(),
 		RepoDir:       getenv("REPO_DIR", "."),
 		AdminUsername: getenv("ADMIN_USERNAME", "admin"),
 		AdminPassword: getenv("ADMIN_PASSWORD", "changeme"),
 	}
+}
+
+// listenAddr resolves the HTTP listen address. PORT (a bare port number,
+// as injected by many container and PaaS platforms) takes precedence;
+// otherwise ADDR is used, defaulting to ":8080".
+func listenAddr() string {
+	if port := os.Getenv("PORT"); port != "" {
+		return ":" + port
+	}
+	return getenv("ADDR", ":8080")
 }
 
 func getenv(key, fallback string) string {
